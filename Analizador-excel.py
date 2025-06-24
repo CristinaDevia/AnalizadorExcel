@@ -1,6 +1,8 @@
 import tkinter
 from tkinter import filedialog, messagebox, ttk
 import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 class AnalizadorExcel:
     def __init__(self, window):
@@ -26,8 +28,13 @@ class AnalizadorExcel:
         self.middle_frame = tkinter.Frame(self.window, padx=10, pady=10)
         self.middle_frame.pack(fill=tkinter.BOTH, expand=True)
 
+        #Tabla de frecuencia
         self.tree = ttk.Treeview(self.middle_frame)
         self.tree.pack(pady=10, fill=tkinter.BOTH, expand=True)
+
+        #Grafico
+        self.graph_frame = tkinter.Frame(self.middle_frame)
+        self.graph_frame.pack(fill=tkinter.BOTH, expand=True)
 
         # Frame inferior para el botón de guardar análisis
         self.bottom_frame = tkinter.Frame(self.window, pady=15)
@@ -82,6 +89,7 @@ class AnalizadorExcel:
 
         # Mostrar la tabla y activar botón guardar
         self.show_table(self.df_frequency)
+        self.plot_graph(self.df_frequency, column)
         self.save_button.config(state=tkinter.NORMAL)
 
     def show_table(self, df):
@@ -98,6 +106,34 @@ class AnalizadorExcel:
         # Inserta filas
         for _, row in df.iterrows():
             self.tree.insert("", "end", values=list(row))
+
+    def plot_graph(self, df, column_name):
+        # Limpia el gráfico anterior si existe
+        for widget in self.graph_frame.winfo_children():
+            widget.destroy()
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        bars = ax.bar(df[column_name], df['Frecuencia Absoluta'], color='skyblue')
+
+        # Añadir porcentajes sobre las barras
+        for bar, porcentaje in zip(bars, df['Frecuencia Relativa']):
+            altura = bar.get_height()
+            ax.annotate(f'{porcentaje*100:.1f}%', 
+                        xy=(bar.get_x() + bar.get_width() / 2, altura),
+                        xytext=(0, 5),
+                        textcoords="offset points",
+                        ha='center', va='bottom')
+
+        ax.set_title("Frecuencia de " + column_name)
+        ax.set_xlabel(column_name)
+        ax.set_ylabel("Frecuencia Absoluta")
+        plt.xticks(rotation=45, ha='right')
+
+        fig.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tkinter.BOTH, expand=True)
 
     def save_analysis(self):
         save_file = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Archivo Excel", "*.xlsx")])
