@@ -6,6 +6,7 @@ class AnalizadorExcel:
     def __init__(self, window):
         self.window = window
         self.window.title("Analizador de Excel")
+        self.window.geometry("1100x700")
 
         # Frame superior que tiene el botón para cargar el archivo y el menú para seleccionar la columna
         self.top_frame = tkinter.Frame(self.window, padx=20, pady=15)
@@ -21,8 +22,11 @@ class AnalizadorExcel:
         self.columns_menu.grid(row=0, column=1, padx=25, pady=5)
         self.columns_menu.bind("<<ComboboxSelected>>", self.generate_table)
 
-        # Treeview para mostrar la tabla con frecuencia absoluta y relativa
-        self.tree = ttk.Treeview(self.window)
+        # Frame del medio para el analisis
+        self.middle_frame = tkinter.Frame(self.window, padx=10, pady=10)
+        self.middle_frame.pack(fill=tkinter.BOTH, expand=True)
+
+        self.tree = ttk.Treeview(self.middle_frame)
         self.tree.pack(pady=10, fill=tkinter.BOTH, expand=True)
 
         # Frame inferior para el botón de guardar análisis
@@ -106,6 +110,5 @@ class AnalizadorExcel:
 
 
 window = tkinter.Tk()
-window.geometry("800x600")
 app = AnalizadorExcel(window)
 window.mainloop()
