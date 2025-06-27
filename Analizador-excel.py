@@ -1,150 +1,151 @@
-import tkinter
-from tkinter import filedialog, messagebox, ttk
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from scipy import stats
 
-class AnalizadorExcel:
-    def __init__(self, window):
-        self.window = window
-        self.window.title("Analizador de Excel")
-        self.window.geometry("1100x700")
+def main():
+    # Ventana principal
+    root = tk.Tk()
+    root.title("Análisis de Monitoreo Ambiental")
+    root.geometry("1000x800")
 
-        # Frame superior que tiene el botón para cargar el archivo y el menú para seleccionar la columna
-        self.top_frame = tkinter.Frame(self.window, padx=20, pady=15)
-        self.top_frame.pack()
+    # Scroll vertical
+    canvas = tk.Canvas(root)
+    scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Botón para cargar el archivo
-        self.load_button = tkinter.Button(self.top_frame, text="Cargar Archivo Excel", command=self.load_excel)
-        self.load_button.grid(row=0, column=0, padx=25, pady=5)
+    scroll_frame = ttk.Frame(canvas)
 
-        # Menú desplegable para seleccionar columna
-        self.var_column = tkinter.StringVar()
-        self.columns_menu = ttk.Combobox(self.top_frame, textvariable=self.var_column, state="disabled")
-        self.columns_menu.grid(row=0, column=1, padx=25, pady=5)
-        self.columns_menu.bind("<<ComboboxSelected>>", self.generate_table)
+    #Usar rueda del mouse
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
-        # Frame del medio para el analisis
-        self.middle_frame = tkinter.Frame(self.window, padx=10, pady=10)
-        self.middle_frame.pack(fill=tkinter.BOTH, expand=True)
+    # Scroll se ajusta al tamaño del canvas
+    def resize_canvas(event):
+        canvas.itemconfig(canvas_window, width=event.width)
 
-        #Tabla de frecuencia
-        self.tree = ttk.Treeview(self.middle_frame)
-        self.tree.pack(pady=10, fill=tkinter.BOTH, expand=True)
+    # Window para redimensionar
+    canvas_window = canvas.create_window((0, 0), window=scroll_frame, anchor="n")
+    canvas.bind("<Configure>", resize_canvas)
 
-        #Grafico
-        self.graph_frame = tkinter.Frame(self.middle_frame)
-        self.graph_frame.pack(fill=tkinter.BOTH, expand=True)
+    scroll_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
 
-        # Frame inferior para el botón de guardar análisis
-        self.bottom_frame = tkinter.Frame(self.window, pady=15)
-        self.bottom_frame.pack()
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
-        # Botón para guardar análisis en Excel
-        self.save_button = tkinter.Button(self.bottom_frame, text="Guardar Análisis", command=self.save_analysis, state=tkinter.DISABLED)
-        self.save_button.pack()
+    # Botón para cargar el archivo Excel
+    ttk.Button(scroll_frame, text="Cargar Excel", command=lambda: cargar_excel(scroll_frame)).pack(pady=10, anchor="center")
 
-        # Variables para almacenar datos
-        self.df = None
-        self.df_frequency = None
+    # Ejecutar aplicación
+    root.mainloop()
 
-    def load_excel(self):
-        file = filedialog.askopenfilename(filetypes=[("Archivos Excel", "*.xlsx *.xls")])
-        if not file:
-            return  # Si no selecciona archivo, no hace nada
+# Cargar datos
+def cargar_excel(parent):
+    file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+    if not file_path:
+        return
 
-        try:
-            self.df = pd.read_excel(file)  # Lee el archivo Excel con pandas
-            columns = list(self.df.columns)
+    # Leer datos
+    df = pd.read_excel(file_path)
 
-            # Activa y llena el menú desplegable con las columnas del Excel
-            self.columns_menu['values'] = columns
-            self.columns_menu.set("Seleccione una columna")
-            self.columns_menu.config(state="readonly")
+    # Cálculo de frecuencia por localización
+    freq_abs = df['Localización'].value_counts()
+    freq_rel = df['Localización'].value_counts(normalize=True) * 100
 
-            # Limpia tabla previa y desactiva botón guardar
-            self.save_button.config(state=tkinter.DISABLED)
-            self.tree.delete(*self.tree.get_children())
+    freq = pd.DataFrame({
+        'Localización': freq_abs.index,
+        'Frecuencia Absoluta': freq_abs.values,
+        'Frecuencia Relativa': freq_rel.values.round(2)
+    })
 
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo leer el archivo:\n{e}")
+    freq_frame = ttk.Frame(parent)
+    freq_frame.pack(fill="x", pady=10, anchor="center")
 
-    def generate_table(self, event=None):
-        column = self.var_column.get()
-        if not column or column == "Seleccione una columna":
-            return
+    # Tabla de frecuencua
+    freq_tree = ttk.Treeview(freq_frame)
+    freq_tree.pack(side="left", fill="x", expand=True)
 
-        # Cálculo de frecuencias
-        absolute_frequency = self.df[column].value_counts()
-        relative_frequency = self.df[column].value_counts(normalize=True).round(4)
+    freq_tree["columns"] = list(freq.columns)
+    freq_tree["show"] = "headings"
 
-        # DataFrame que junta ambas frecuencias
-        df_frec = pd.DataFrame({
-            column: absolute_frequency.index,
-            'Frecuencia Absoluta': absolute_frequency.values,
-            'Frecuencia Relativa': relative_frequency.values
-        })
+    for col in freq.columns:
+        freq_tree.heading(col, text=col)
 
-        self.df_frequency = df_frec
+    for _, row in freq.iterrows():
+        freq_tree.insert("", "end", values=list(row))
 
-        # Mostrar la tabla y activar botón guardar
-        self.show_table(self.df_frequency)
-        self.plot_graph(self.df_frequency, column)
-        self.save_button.config(state=tkinter.NORMAL)
+    # Cálculo de estadísticas por localización
+    stats_df = df.groupby('Localización')['Profundidad (m)'].agg([
+        ('Media', 'mean'),
+        ('Mediana', 'median'),
+        ('Moda', lambda x: stats.mode(x, keepdims=True)[0][0]),
+        ('Desv Std', 'std'),
+        ('Varianza', 'var')
+    ]).reset_index()
 
-    def show_table(self, df):
-        self.tree.delete(*self.tree.get_children())  # Limpia tabla
+    stats_frame = ttk.Frame(parent)
+    stats_frame.pack(fill="x", pady=10, anchor="center")
 
-        self.tree["columns"] = list(df.columns)  # Define columnas
-        self.tree["show"] = "headings"           # Oculta columna vacía inicial
+    stats_tree = ttk.Treeview(stats_frame)
+    stats_tree.pack(side="left", fill="x", expand=True)
 
-        # Configura encabezados y anchos centrados
-        for col in df.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, anchor="center")
+    stats_tree["columns"] = list(stats_df.columns)
+    stats_tree["show"] = "headings"
+    for col in stats_df.columns:
+        stats_tree.heading(col, text=col)
+    for _, row in stats_df.iterrows():
+        stats_tree.insert("", "end", values=list(row))
 
-        # Inserta filas
-        for _, row in df.iterrows():
-            self.tree.insert("", "end", values=list(row))
+    # Gráfico de barras de frecuencia por localización 
+    fig1, ax1 = plt.subplots()
+    bars = ax1.bar(freq['Localización'], freq['Frecuencia Absoluta'])
+    total = freq['Frecuencia Absoluta'].sum()
+    for bar in bars:
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2, height, f"{height / total:.1%}", ha='center', va='bottom')
+    ax1.set_title("Frecuencia Absoluta por Localización")
+    ax1.set_ylabel("Frecuencia Absoluta")
+    ax1.set_xlabel("Localización")
+    plt.xticks(rotation=45)
 
-    def plot_graph(self, df, column_name):
-        # Limpia el gráfico anterior si existe
-        for widget in self.graph_frame.winfo_children():
-            widget.destroy()
+    canvas_plot1 = FigureCanvasTkAgg(fig1, master=parent)
+    canvas_plot1.draw()
+    canvas_plot1.get_tk_widget().pack(pady=10, anchor="center")
 
-        fig, ax = plt.subplots(figsize=(8, 5))
-        bars = ax.bar(df[column_name], df['Frecuencia Absoluta'], color='skyblue')
+    # Gráfico de línea de tendencia por año
+    if 'Año de Monitoreo' in df.columns:
+        df_year = df.groupby(['Año de Monitoreo', 'Localización'])['Profundidad (m)'].mean().reset_index()
+        pivot = df_year.pivot(index='Año de Monitoreo', columns='Localización', values='Profundidad (m)').fillna(0)
+        fig2, ax2 = plt.subplots()
+        pivot.plot(ax=ax2, marker='o')
+        ax2.set_title("Tendencia de Profundidad Promedio por Año")
+        ax2.set_ylabel("Profundidad (m)")
+        ax2.set_xlabel("Año")
+        plt.xticks(rotation=45)
 
-        # Añadir porcentajes sobre las barras
-        for bar, porcentaje in zip(bars, df['Frecuencia Relativa']):
-            altura = bar.get_height()
-            ax.annotate(f'{porcentaje*100:.1f}%', 
-                        xy=(bar.get_x() + bar.get_width() / 2, altura),
-                        xytext=(0, 5),
-                        textcoords="offset points",
-                        ha='center', va='bottom')
+        canvas_plot2 = FigureCanvasTkAgg(fig2, master=parent)
+        canvas_plot2.draw()
+        canvas_plot2.get_tk_widget().pack(pady=10, anchor="center")
 
-        ax.set_title("Frecuencia de " + column_name)
-        ax.set_xlabel(column_name)
-        ax.set_ylabel("Frecuencia Absoluta")
-        plt.xticks(rotation=45, ha='right')
+    # Guardar resultados a Excel
+    def guardar_resultado():
+        save_path = filedialog.asksaveasfilename(defaultextension=".xlsx")
+        if save_path:
+            with pd.ExcelWriter(save_path) as writer:
+                freq.to_excel(writer, sheet_name="Frecuencia Absoluta", index=False)
+                stats_df.to_excel(writer, sheet_name="Estadisticas", index=False)
+                if 'Año de Monitoreo' in df.columns:
+                    pivot.to_excel(writer, sheet_name="Tendencia")
+            messagebox.showinfo("Éxito", "Datos guardados exitosamente")
 
-        fig.tight_layout()
+    ttk.Button(parent, text="Guardar Resultado", command=guardar_resultado).pack(pady=20, anchor="center")
 
-        canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tkinter.BOTH, expand=True)
-
-    def save_analysis(self):
-        save_file = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Archivo Excel", "*.xlsx")])
-        if save_file:
-            try:
-                self.df_frequency.to_excel(save_file, index=False)
-                messagebox.showinfo("Éxito", "El análisis fue guardado exitosamente.")
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo guardar el archivo:\n{e}")
-
-
-window = tkinter.Tk()
-app = AnalizadorExcel(window)
-window.mainloop()
+if __name__ == "__main__":
+    main()
